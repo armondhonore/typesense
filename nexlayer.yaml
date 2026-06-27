@@ -2,8 +2,36 @@ application:
   name: typesense
   pods:
   - name: app
+    image: mirror.gcr.io/library/nginx:1.27-alpine
+    path: /
+    servicePorts:
+    - 80
+    command:
+    - sh
+    - -c
+    - |
+      cat > /etc/nginx/conf.d/default.conf <<'EOF'
+      server {
+        listen 80;
+        # Root returns a 200 landing page so the public URL is healthy.
+        location = / {
+          default_type application/json;
+          return 200 '{"service":"typesense","status":"ok","health":"/health","api":"/collections"}';
+        }
+        # Health passthrough to the typesense backend.
+        location = /health {
+          proxy_pass http://typesense.pod:8108/health;
+        }
+        # Everything else proxies to the typesense search server.
+        location / {
+          proxy_pass http://typesense.pod:8108;
+          proxy_set_header Host $host;
+        }
+      }
+      EOF
+      exec nginx -g 'daemon off;'
+  - name: typesense
     image: mirror.gcr.io/typesense/typesense:29.0
-    path: /health
     servicePorts:
     - 8108
     vars:
